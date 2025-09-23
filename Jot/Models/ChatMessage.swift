@@ -1,0 +1,51 @@
+//
+//  ChatMessage.swift
+//  Jot
+//
+//  Created by Ian O'Donnell on 8/8/25.
+//
+
+import Foundation
+
+struct ChatMessage: Identifiable, Codable {
+    let id = UUID()
+    let text: String
+    let timestamp: Date
+    let isFromUser: Bool
+    let messageType: MessageType
+    var taskState: TaskState? // NEW: track if this is a task
+    
+    enum MessageType: String, Codable {
+        case userThought = "thought"
+        case userQuery = "query"
+        case aiResponse = "response"
+    }
+    
+    enum TaskState: String, Codable {
+        case pending = "pending"
+        case completed = "completed"
+        case notATask = "not_a_task" // User said this isn't a task
+    }
+    
+    var displayText: String {
+        return text
+    }
+    
+    var timeAgo: String {
+        let formatter = RelativeDateTimeFormatter()
+        return formatter.localizedString(for: timestamp, relativeTo: Date())
+    }
+    
+    // Helper properties
+    var isTask: Bool {
+        return taskState == .pending || taskState == .completed
+    }
+    
+    var isPendingTask: Bool {
+        return taskState == .pending
+    }
+    
+    var isCompletedTask: Bool {
+        return taskState == .completed
+    }
+}
