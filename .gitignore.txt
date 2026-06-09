@@ -1,5 +1,0 @@
-
-Config.swift
-*.xcuserdata/
-DerivedData/
-.DS_Store
