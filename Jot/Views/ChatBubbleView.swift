@@ -59,13 +59,26 @@ struct ChatBubbleView: View {
     
     @ViewBuilder
     private var messageContent: some View {
-        Text(message.text)
+        bubbleText
             .padding(12)
             .background(backgroundColor)
             .foregroundColor(textColor)
             .cornerRadius(16)
             .strikethrough(message.isCompletedTask, color: textColor)
             .opacity(message.isCompletedTask ? 0.7 : 1.0)
+    }
+
+    // AI responses are rendered as Markdown so lists/bold display properly.
+    // User messages stay verbatim.
+    private var bubbleText: Text {
+        if !message.isFromUser,
+           let attributed = try? AttributedString(
+               markdown: message.text,
+               options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+           ) {
+            return Text(attributed)
+        }
+        return Text(message.text)
     }
     
     @ViewBuilder

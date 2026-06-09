@@ -23,10 +23,13 @@ class DataManager: ObservableObject {
     
     // MARK: - Message Management
     
-    func addUserMessage(_ text: String, type: ChatMessage.MessageType = .userThought) {
-        // Determine if this looks like a task
+    /// Adds a user message (optimistically). Returns the new message id and, for
+    /// thoughts, the captured-thought id so the caller can apply AI analysis later.
+    @discardableResult
+    func addUserMessage(_ text: String, type: ChatMessage.MessageType = .userThought) -> (messageId: UUID, thoughtId: UUID?) {
+        // Optimistic task guess via keyword heuristic; AI analysis corrects it later.
         let possibleTaskState: ChatMessage.TaskState? = (type == .userThought && looksLikeTask(text)) ? .pending : nil
-        
+
         let message = ChatMessage(
             text: text,
             timestamp: Date(),
@@ -35,28 +38,56 @@ class DataManager: ObservableObject {
             taskState: possibleTaskState
         )
         messages.append(message)
-        
+
+        var thoughtId: UUID? = nil
         // Only add to thoughts if it's actual content (not queries)
         if type == .userThought {
-            let thought = CapturedThought(
+            var thought = CapturedThought(
                 text: text,
                 timestamp: Date(),
-                category: nil // Will be categorized by AI later
+                category: nil // Populated by AI analysis via applyAnalysis(...)
             )
+            thought.messageId = message.id
+            thoughtId = thought.id
             thoughts.append(thought)
-            
+
             // Smart retention for thoughts
             if thoughts.count > maxThoughts {
                 let importantThoughts = thoughts.filter { shouldKeepForever($0) }
                 let regularThoughts = thoughts.filter { !shouldKeepForever($0) }
-                
+
                 let availableSlots = maxThoughts - importantThoughts.count
                 let recentRegular = Array(regularThoughts.suffix(max(0, availableSlots)))
-                
+
                 thoughts = (importantThoughts + recentRegular).sorted { $0.timestamp < $1.timestamp }
             }
         }
-        
+
+        saveData()
+        return (message.id, thoughtId)
+    }
+
+    /// Applies the AI analysis result to the message and its captured thought.
+    /// This is the single source of truth for categorization — it overwrites the
+    /// optimistic keyword guess unless the user has already acted on the task.
+    func applyAnalysis(_ analysis: ThoughtAnalysis, toMessageId messageId: UUID, thoughtId: UUID?) {
+        if let index = messages.firstIndex(where: { $0.id == messageId }) {
+            var updated = messages[index]
+            updated.category = analysis.category.rawValue
+            updated.dueDate = analysis.dueDate
+            // Don't override an explicit user decision.
+            if updated.taskState != .completed && updated.taskState != .notATask {
+                updated.taskState = analysis.isTask ? .pending : nil
+            }
+            messages[index] = updated
+        }
+
+        if let thoughtId = thoughtId,
+           let index = thoughts.firstIndex(where: { $0.id == thoughtId }) {
+            thoughts[index].category = analysis.category.rawValue
+            thoughts[index].dueDate = analysis.dueDate
+        }
+
         saveData()
     }
     
@@ -156,7 +187,7 @@ class DataManager: ObservableObject {
         ]
         
         let hasImportantKeyword = permanentKeywords.contains { text.contains($0) }
-        let isInfoCategory = thought.category == "INFO"
+        let isInfoCategory = thought.category == "info"
         let hasCodePattern = text.range(of: "\\b\\d{4,}\\b", options: .regularExpression) != nil ||
                             text.range(of: "\\b[A-Z]{2,}\\d{2,}\\b", options: .regularExpression) != nil
         

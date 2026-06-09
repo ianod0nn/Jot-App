@@ -10,8 +10,10 @@ struct CapturedThought: Identifiable, Codable {
     let id = UUID()
     let text: String
     let timestamp: Date
-    let category: String? // "TASK", "IDEA", "INFO"
+    var category: String?      // AI-assigned: "task" | "idea" | "info"
     var isCompleted: Bool = false
+    var messageId: UUID? = nil   // links back to the originating ChatMessage
+    var dueDate: Date? = nil     // AI-extracted due date, if any
     
     // For easy display in UI
     var displayText: String {

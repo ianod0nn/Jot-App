@@ -15,10 +15,6 @@ enum QueryType {
     case generalQuery         // Everything else
 }
 
-enum ThoughtType {
-    case task, idea, referenceInfo, simpleNote, reminder
-}
-
 struct ChatView: View {
     @StateObject private var dataManager = DataManager()
     @StateObject private var speechManager = SpeechManager()
@@ -128,18 +124,18 @@ struct ChatView: View {
         // Determine if this is a query or a thought
         let messageType: ChatMessage.MessageType = isQuery(trimmedText) ? .userQuery : .userThought
         
-        // Add user message to chat
-        dataManager.addUserMessage(trimmedText, type: messageType)
-        
+        // Add user message to chat (optimistic; AI analysis fills in shortly)
+        let ids = dataManager.addUserMessage(trimmedText, type: messageType)
+
         // Clear input
         messageText = ""
         speechManager.reset()
-        
+
         // Process based on type
         if messageType == .userQuery {
             handleQuery(trimmedText)
         } else {
-            handleThought(trimmedText)
+            handleThought(trimmedText, messageId: ids.messageId, thoughtId: ids.thoughtId)
         }
     }
     
@@ -191,43 +187,23 @@ struct ChatView: View {
         return .generalQuery
     }
 
-    private func classifyThought(_ text: String) -> ThoughtType {
-        let lowercased = text.lowercased()
-        
-        if lowercased.contains("code") || lowercased.contains("number") ||
-           lowercased.contains("password") || lowercased.contains("account") {
-            return .referenceInfo
-        }
-        
-        if lowercased.contains("need to") || lowercased.contains("should") ||
-           lowercased.contains("remind") || lowercased.contains("call") {
-            return .task
-        }
-        
-        if lowercased.contains("idea") || lowercased.contains("what if") ||
-           lowercased.contains("maybe") || lowercased.contains("thinking") {
-            return .idea
-        }
-        
-        return .simpleNote
-    }
-    
-    private func handleThought(_ text: String) {
-        // Determine thought type before sending to AI
-        let thoughtType = classifyThought(text)
-        
-        // For simple thoughts, just acknowledge without AI response
-        if thoughtType == .simpleNote || thoughtType == .reminder {
-            // Show brief acknowledgment
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                dataManager.addAIResponse("✓ Saved")
-            }
-        }
-        
-        // Still categorize with AI for context, but don't always respond
+    private func handleThought(_ text: String, messageId: UUID, thoughtId: UUID?) {
+        // Single AI call: categorize, detect task-ness, extract any due date.
+        // The result is the source of truth and is persisted onto the thought.
         Task {
-            let categorizedText = await aiManager.categorizeThought(text)
-            // Update the thought with category if needed
+            let analysis = await aiManager.analyzeThought(text)
+            await MainActor.run {
+                if let analysis = analysis {
+                    dataManager.applyAnalysis(analysis, toMessageId: messageId, thoughtId: thoughtId)
+                    // Tasks get inline controls in the bubble; acknowledge non-tasks.
+                    if !analysis.isTask {
+                        dataManager.addAIResponse("✓ Saved")
+                    }
+                } else {
+                    // AI unavailable — the optimistic keyword guess stands. Acknowledge.
+                    dataManager.addAIResponse("✓ Saved")
+                }
+            }
         }
     }
     

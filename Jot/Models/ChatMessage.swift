@@ -14,6 +14,8 @@ struct ChatMessage: Identifiable, Codable {
     let isFromUser: Bool
     let messageType: MessageType
     var taskState: TaskState? // NEW: track if this is a task
+    var category: String? = nil  // AI-assigned: "task" | "idea" | "info"
+    var dueDate: Date? = nil     // AI-extracted due date, if any
     
     enum MessageType: String, Codable {
         case userThought = "thought"
