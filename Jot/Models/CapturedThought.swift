@@ -14,6 +14,7 @@ struct CapturedThought: Identifiable, Codable {
     var isCompleted: Bool = false
     var messageId: UUID? = nil   // links back to the originating ChatMessage
     var dueDate: Date? = nil     // AI-extracted due date, if any
+    var items: [ListItem]? = nil // checkable rows when this thought is a list
     
     // For easy display in UI
     var displayText: String {

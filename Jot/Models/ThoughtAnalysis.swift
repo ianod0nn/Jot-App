@@ -21,4 +21,6 @@ struct ThoughtAnalysis: Codable {
     let dueDate: Date?        // resolved absolute date if a time was mentioned
     let priority: Int?        // 1–3, optional
     let tags: [String]
+    let listTitle: String?    // short title when the note is a checklist
+    let items: [String]?      // checklist items when the note enumerates several things
 }

@@ -74,10 +74,17 @@ class AIManager: ObservableObject {
         filler/disfluencies removed but meaning preserved. tags are 0–4 short
         lowercase keywords. priority is 1 (low) to 3 (high) when inferable.
 
+        If the note enumerates several distinct things to get or do (a shopping
+        list, a packing list, errands), return them as separate strings in items
+        and give the list a short listTitle (e.g. "Grocery store"). For such a
+        list set isTask=false (the items are checked off individually). Omit items
+        and listTitle entirely for single thoughts.
+
         Examples:
         "I need to call mom about dinner tomorrow at 6" → category task, isTask true, a dueDate
         "what if we used AI for onboarding" → category idea, isTask false, no dueDate
         "my mariano's rewards number is 4023" → category info, isTask false, no dueDate
+        "for the store I need milk, eggs and bread" → category task, isTask false, listTitle "Grocery store", items ["Milk", "Eggs", "Bread"]
         """
 
         let schema: [String: Any] = [
@@ -88,7 +95,9 @@ class AIManager: ObservableObject {
                 "cleanedText": ["type": "string"],
                 "dueDate": ["type": "string", "format": "date-time"],
                 "priority": ["type": "integer", "enum": [1, 2, 3]],
-                "tags": ["type": "array", "items": ["type": "string"]]
+                "tags": ["type": "array", "items": ["type": "string"]],
+                "listTitle": ["type": "string"],
+                "items": ["type": "array", "items": ["type": "string"]]
             ],
             "required": ["category", "isTask", "cleanedText", "tags"],
             "additionalProperties": false
@@ -117,12 +126,6 @@ class AIManager: ObservableObject {
             .filter { !$0.isEmpty && $0.count > 2 }
     }
 
-    private func extractShoppingItems(_ text: String) -> [String] {
-        // Simple implementation - extract common grocery items
-        let commonItems = ["milk", "eggs", "bread", "butter", "cheese", "meat", "chicken", "beef"]
-        return commonItems.filter { text.lowercased().contains($0) }
-    }
-
     private func filterThoughtsForQuery(_ thoughts: [CapturedThought], queryType: QueryType) -> [CapturedThought] {
         switch queryType {
         case .informationRetrieval:
@@ -137,7 +140,7 @@ class AIManager: ObservableObject {
             return getActiveTasks(thoughts)
 
         case .shoppingQuery:
-            return getActiveShoppingItems(thoughts)
+            return thoughts // handled directly in queryThoughts via list items
 
         case .generalQuery:
             return thoughts
@@ -260,25 +263,6 @@ class AIManager: ObservableObject {
         return importantWords
     }
 
-    private func getActiveShoppingItems(_ thoughts: [CapturedThought]) -> [CapturedThought] {
-        return thoughts.filter { thought in
-            let text = thought.text.lowercased()
-            guard text.contains("need") || text.contains("buy") || text.contains("store") || text.contains("grocery") else { return false }
-
-            // Check if items were purchased
-            let items = extractShoppingItems(thought.text)
-            let isCompleted = thoughts.filter { $0.timestamp > thought.timestamp }.contains { laterThought in
-                let laterText = laterThought.text.lowercased()
-                return items.contains { item in
-                    laterText.contains("got \(item)") || laterText.contains("bought \(item)")
-                }
-            }
-
-            return !isCompleted
-        }
-    }
-
-
     func queryThoughts(_ query: String, thoughts: [CapturedThought], queryType: QueryType, pendingTasks: [ChatMessage] = []) async -> String {
         if queryType == .taskQuery {
             // Use the passed-in pending tasks instead of trying to access dataManager
@@ -301,6 +285,19 @@ class AIManager: ObservableObject {
 
             Tap the checkmark next to any task to mark it complete!
             """
+        }
+
+        if queryType == .shoppingQuery {
+            // Read directly from list items — no keyword guessing.
+            let openItems = thoughts
+                .compactMap { $0.items }
+                .flatMap { $0 }
+                .filter { !$0.isChecked }
+            if openItems.isEmpty {
+                return "Nothing needed! 🎉"
+            }
+            let list = openItems.map { "- \($0.text)" }.joined(separator: "\n")
+            return "Here's what you still need:\n\n\(list)"
         }
 
         // Handle other query types as before...

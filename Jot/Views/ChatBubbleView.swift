@@ -13,6 +13,19 @@ struct ChatBubbleView: View {
     @ObservedObject var dataManager: DataManager
     
     var body: some View {
+        if let items = message.items, !items.isEmpty {
+            HStack {
+                ChecklistBubbleView(title: message.listTitle ?? "List", items: items) { itemId in
+                    dataManager.toggleItem(messageId: message.id, itemId: itemId)
+                }
+                Spacer(minLength: 20)
+            }
+        } else {
+            standardBubble
+        }
+    }
+
+    private var standardBubble: some View {
         VStack(alignment: message.isFromUser ? .trailing : .leading, spacing: 8) {
             // Main message bubble
             HStack {

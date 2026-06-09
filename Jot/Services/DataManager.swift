@@ -71,12 +71,21 @@ class DataManager: ObservableObject {
     /// This is the single source of truth for categorization — it overwrites the
     /// optimistic keyword guess unless the user has already acted on the task.
     func applyAnalysis(_ analysis: ThoughtAnalysis, toMessageId messageId: UUID, thoughtId: UUID?) {
+        let listItems: [ListItem]? = (analysis.items?.isEmpty == false)
+            ? analysis.items!.map { ListItem(text: $0) }
+            : nil
+
         if let index = messages.firstIndex(where: { $0.id == messageId }) {
             var updated = messages[index]
             updated.category = analysis.category.rawValue
             updated.dueDate = analysis.dueDate
-            // Don't override an explicit user decision.
-            if updated.taskState != .completed && updated.taskState != .notATask {
+            if let listItems = listItems {
+                // A checklist replaces the single-task controls.
+                updated.items = listItems
+                updated.listTitle = analysis.listTitle ?? "List"
+                updated.taskState = nil
+            } else if updated.taskState != .completed && updated.taskState != .notATask {
+                // Don't override an explicit user decision.
                 updated.taskState = analysis.isTask ? .pending : nil
             }
             messages[index] = updated
@@ -86,6 +95,32 @@ class DataManager: ObservableObject {
            let index = thoughts.firstIndex(where: { $0.id == thoughtId }) {
             thoughts[index].category = analysis.category.rawValue
             thoughts[index].dueDate = analysis.dueDate
+            thoughts[index].items = listItems
+        }
+
+        saveData()
+    }
+
+    /// Toggles a checklist item. When every item is checked, the list is removed
+    /// from the database (option B) and replaced with a brief confirmation.
+    func toggleItem(messageId: UUID, itemId: UUID) {
+        guard let mIdx = messages.firstIndex(where: { $0.id == messageId }),
+              var items = messages[mIdx].items,
+              let iIdx = items.firstIndex(where: { $0.id == itemId }) else { return }
+
+        items[iIdx].isChecked.toggle()
+        messages[mIdx].items = items
+
+        // Keep the linked thought in sync (drives "what's left at the store?").
+        if let tIdx = thoughts.firstIndex(where: { $0.messageId == messageId }) {
+            thoughts[tIdx].items = items
+        }
+
+        if items.allSatisfy({ $0.isChecked }) {
+            messages.removeAll { $0.id == messageId }
+            thoughts.removeAll { $0.messageId == messageId }
+            addAIResponse("✓ Got everything — list cleared") // persists via saveData
+            return
         }
 
         saveData()
