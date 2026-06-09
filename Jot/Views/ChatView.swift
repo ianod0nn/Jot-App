@@ -209,7 +209,13 @@ struct ChatView: View {
     
     private func handleQuery(_ text: String) {
         let queryType = classifyQuery(text)
-        
+
+        // Shopping/list queries render an interactive checklist, not text.
+        if queryType == .shoppingQuery {
+            dataManager.addShoppingListResponse()
+            return
+        }
+
         Task {
             // Pass pending tasks to AIManager for task queries
             let pendingTasks = queryType == .taskQuery ? dataManager.getPendingTasks() : []

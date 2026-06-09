@@ -287,18 +287,8 @@ class AIManager: ObservableObject {
             """
         }
 
-        if queryType == .shoppingQuery {
-            // Read directly from list items — no keyword guessing.
-            let openItems = thoughts
-                .compactMap { $0.items }
-                .flatMap { $0 }
-                .filter { !$0.isChecked }
-            if openItems.isEmpty {
-                return "Nothing needed! 🎉"
-            }
-            let list = openItems.map { "- \($0.text)" }.joined(separator: "\n")
-            return "Here's what you still need:\n\n\(list)"
-        }
+        // Shopping queries are handled by DataManager.addShoppingListResponse,
+        // which renders an interactive checklist instead of text.
 
         // Handle other query types as before...
         let relevantThoughts = filterThoughtsForQuery(thoughts, queryType: queryType)

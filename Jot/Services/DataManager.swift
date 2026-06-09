@@ -79,13 +79,10 @@ class DataManager: ObservableObject {
             var updated = messages[index]
             updated.category = analysis.category.rawValue
             updated.dueDate = analysis.dueDate
-            if let listItems = listItems {
-                // A checklist replaces the single-task controls.
-                updated.items = listItems
-                updated.listTitle = analysis.listTitle ?? "List"
-                updated.taskState = nil
-            } else if updated.taskState != .completed && updated.taskState != .notATask {
-                // Don't override an explicit user decision.
+            // The capture bubble stays a plain "saved" note — the checklist is
+            // surfaced later, when the user asks (see addShoppingListResponse).
+            // Don't override an explicit user decision.
+            if updated.taskState != .completed && updated.taskState != .notATask {
                 updated.taskState = analysis.isTask ? .pending : nil
             }
             messages[index] = updated
@@ -101,8 +98,36 @@ class DataManager: ObservableObject {
         saveData()
     }
 
-    /// Toggles a checklist item. When every item is checked, the list is removed
-    /// from the database (option B) and replaced with a brief confirmation.
+    /// Builds the answer to a shopping/list query as a checkable card listing
+    /// every still-needed item across captured lists.
+    func addShoppingListResponse() {
+        let openItems = thoughts
+            .compactMap { $0.items }
+            .flatMap { $0 }
+            .filter { !$0.isChecked }
+
+        if openItems.isEmpty {
+            addAIResponse("Nothing needed! 🎉")
+            return
+        }
+
+        var message = ChatMessage(
+            text: "",
+            timestamp: Date(),
+            isFromUser: false,
+            messageType: .aiResponse,
+            taskState: nil
+        )
+        message.listTitle = "Shopping list"
+        message.items = openItems
+        messages.append(message)
+        saveData()
+    }
+
+    /// Toggles a checklist item shown in a query response. The change is
+    /// persisted to whichever captured thought owns the item. When every item in
+    /// the displayed list is checked, those items are removed from the database
+    /// (option B) and the card is replaced with a brief confirmation.
     func toggleItem(messageId: UUID, itemId: UUID) {
         guard let mIdx = messages.firstIndex(where: { $0.id == messageId }),
               var items = messages[mIdx].items,
@@ -111,14 +136,27 @@ class DataManager: ObservableObject {
         items[iIdx].isChecked.toggle()
         messages[mIdx].items = items
 
-        // Keep the linked thought in sync (drives "what's left at the store?").
-        if let tIdx = thoughts.firstIndex(where: { $0.messageId == messageId }) {
-            thoughts[tIdx].items = items
+        // Persist to the source thought that owns this item.
+        let newValue = items[iIdx].isChecked
+        for tIdx in thoughts.indices {
+            if var titems = thoughts[tIdx].items,
+               let j = titems.firstIndex(where: { $0.id == itemId }) {
+                titems[j].isChecked = newValue
+                thoughts[tIdx].items = titems
+                break
+            }
         }
 
         if items.allSatisfy({ $0.isChecked }) {
+            // Option B: drop the checked items from the database entirely.
+            let clearedIds = Set(items.map { $0.id })
+            for tIdx in thoughts.indices {
+                if var titems = thoughts[tIdx].items {
+                    titems.removeAll { clearedIds.contains($0.id) }
+                    thoughts[tIdx].items = titems.isEmpty ? nil : titems
+                }
+            }
             messages.removeAll { $0.id == messageId }
-            thoughts.removeAll { $0.messageId == messageId }
             addAIResponse("✓ Got everything — list cleared") // persists via saveData
             return
         }
