@@ -78,6 +78,7 @@ class DataManager: ObservableObject {
         if let index = messages.firstIndex(where: { $0.id == messageId }) {
             var updated = messages[index]
             updated.category = analysis.category.rawValue
+            updated.cleanedText = analysis.cleanedText
             updated.dueDate = analysis.dueDate
             // The capture bubble stays a plain "saved" note — the checklist is
             // surfaced later, when the user asks (see addShoppingListResponse).
@@ -93,6 +94,7 @@ class DataManager: ObservableObject {
             thoughts[index].category = analysis.category.rawValue
             thoughts[index].dueDate = analysis.dueDate
             thoughts[index].items = listItems
+            thoughts[index].listTitle = analysis.listTitle
             thoughts[index].topic = analysis.topic
         }
 
@@ -160,7 +162,7 @@ class DataManager: ObservableObject {
             taskState: nil
         )
         message.listTitle = "Open tasks"
-        message.items = pending.map { ListItem(id: $0.id, text: $0.text, isChecked: false) }
+        message.items = pending.map { ListItem(id: $0.id, text: $0.cleanedText ?? $0.text, isChecked: false) }
         message.listKind = .tasks
         messages.append(message)
         saveData()
@@ -219,7 +221,71 @@ class DataManager: ObservableObject {
 
         saveData()
     }
-    
+
+    /// Toggles a single item inside a captured list thought (used by the Tasks
+    /// filter, which renders list captures as checklists). Clears the list when
+    /// every item is checked.
+    func toggleThoughtItem(thoughtId: UUID, itemId: UUID) {
+        guard let tIdx = thoughts.firstIndex(where: { $0.id == thoughtId }),
+              var items = thoughts[tIdx].items,
+              let iIdx = items.firstIndex(where: { $0.id == itemId }) else { return }
+
+        items[iIdx].isChecked.toggle()
+        if items.allSatisfy({ $0.isChecked }) {
+            thoughts[tIdx].items = nil // option B: clear the finished list
+        } else {
+            thoughts[tIdx].items = items
+        }
+        saveData()
+    }
+
+    func removeThought(_ id: UUID) {
+        thoughts.removeAll { $0.id == id }
+        saveData()
+    }
+
+    /// Checks off open list items and pending tasks matching the given names
+    /// (from a spoken completion statement). Returns the labels of what was checked.
+    func completeItems(matching names: [String]) -> [String] {
+        let needles = names
+            .map { $0.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard !needles.isEmpty else { return [] }
+        func matches(_ text: String) -> Bool {
+            let t = text.lowercased()
+            return needles.contains { t.contains($0) || $0.contains(t) }
+        }
+
+        var checked: [String] = []
+
+        // Shopping / list items across captured lists.
+        for tIdx in thoughts.indices {
+            guard var items = thoughts[tIdx].items else { continue }
+            var changed = false
+            for i in items.indices where !items[i].isChecked && matches(items[i].text) {
+                items[i].isChecked = true
+                checked.append(items[i].text)
+                changed = true
+            }
+            if changed {
+                thoughts[tIdx].items = items.allSatisfy { $0.isChecked } ? nil : items
+            }
+        }
+
+        // Pending to-do tasks.
+        for mIdx in messages.indices {
+            let m = messages[mIdx]
+            guard m.taskState == .pending, m.items == nil else { continue }
+            if matches(m.cleanedText ?? m.text) {
+                messages[mIdx].taskState = .completed
+                checked.append(m.cleanedText ?? m.text)
+            }
+        }
+
+        saveData()
+        return checked
+    }
+
     func addAIResponse(_ text: String) {
         let message = ChatMessage(
             text: text,

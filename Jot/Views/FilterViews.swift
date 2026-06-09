@@ -84,7 +84,8 @@ struct FilterBar: View {
 // MARK: - Tasks filter
 
 struct TasksFilterView: View {
-    let tasks: [ChatMessage]   // category == task, userThought, items == nil
+    let tasks: [ChatMessage]          // plain to-do tasks (taskState set)
+    let lists: [CapturedThought]      // list captures filed under task
     @ObservedObject var dataManager: DataManager
 
     private var open: [ChatMessage] {
@@ -98,8 +99,12 @@ struct TasksFilterView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if open.isEmpty && done.isEmpty {
+            if open.isEmpty && done.isEmpty && lists.isEmpty {
                 EmptyNote(label: "No tasks yet")
+            }
+            ForEach(lists) { list in
+                TaskListChecklist(thought: list, dataManager: dataManager)
+                    .padding(.bottom, 12)
             }
             if !open.isEmpty { card(open) }
             if !done.isEmpty {
@@ -133,6 +138,38 @@ struct TasksFilterView: View {
     }
 }
 
+// A list capture (e.g. grocery list) shown inside the Tasks filter as a
+// titled, checkable card — its items, not a single opaque row.
+struct TaskListChecklist: View {
+    let thought: CapturedThought
+    @ObservedObject var dataManager: DataManager
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(thought.listTitle ?? "List")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(JotTheme.secondary)
+                .padding(.leading, 2)
+            VStack(spacing: 0) {
+                let items = thought.items ?? []
+                ForEach(Array(items.enumerated()), id: \.element.id) { idx, item in
+                    if idx > 0 {
+                        Rectangle().fill(JotTheme.separator).frame(height: 0.5).padding(.leading, 52)
+                    }
+                    ChecklistRow(item: item, due: nil) {
+                        dataManager.toggleThoughtItem(thoughtId: thought.id, itemId: item.id)
+                    }
+                }
+            }
+            .background(
+                RoundedRectangle(cornerRadius: JotTheme.radius).fill(Color.white)
+                    .overlay(RoundedRectangle(cornerRadius: JotTheme.radius)
+                        .stroke(Color.black.opacity(0.05), lineWidth: 0.5))
+            )
+        }
+    }
+}
+
 struct TaskFilterRow: View {
     let task: ChatMessage
     var onToggle: () -> Void
@@ -146,7 +183,7 @@ struct TaskFilterRow: View {
                 TaskCheckButton(checked: task.isCompletedTask, overdue: overdue, size: 23, action: onToggle)
                     .allowsHitTesting(false)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(task.text)
+                    Text(task.cleanedText ?? task.text)
                         .font(.system(size: 16)).tracking(-0.2)
                         .foregroundColor(task.isCompletedTask ? JotTheme.tertiary : JotTheme.ink)
                         .strikethrough(task.isCompletedTask, color: JotTheme.tertiary)

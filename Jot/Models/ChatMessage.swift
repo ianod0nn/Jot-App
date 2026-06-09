@@ -15,6 +15,7 @@ struct ChatMessage: Identifiable, Codable {
     let messageType: MessageType
     var taskState: TaskState? // NEW: track if this is a task
     var category: String? = nil    // AI-assigned: "task" | "idea" | "info"
+    var cleanedText: String? = nil // AI-normalized text (filler/time removed)
     var dueDate: Date? = nil       // AI-extracted due date, if any
     var listTitle: String? = nil   // title when this message is a checklist
     var items: [ListItem]? = nil   // checkable rows when this message is a list

@@ -24,4 +24,6 @@ struct ThoughtAnalysis: Codable {
     let listTitle: String?    // short title when the note is a checklist
     let items: [String]?      // checklist items when the note enumerates several things
     let topic: String?        // short grouping label for ideas/reference (e.g. "Home", "Travel")
+    let isCompletion: Bool    // true when the note says something was already done/obtained
+    let completedItems: [String]? // the things stated as done, to check off existing lists/tasks
 }

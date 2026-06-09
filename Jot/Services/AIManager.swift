@@ -32,25 +32,35 @@ class AIManager: ObservableObject {
     private let model = "claude-haiku-4-5"
     private let anthropicVersion = "2023-06-01"
 
-    // Lenient ISO-8601 decoder: accepts timestamps with or without fractional seconds.
-    private static let analysisDecoder: JSONDecoder = {
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .custom { decoder in
-            let container = try decoder.singleValueContainer()
-            let string = try container.decode(String.self)
-            let withFraction = ISO8601DateFormatter()
-            withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            if let date = withFraction.date(from: string) { return date }
-            let plain = ISO8601DateFormatter()
-            plain.formatOptions = [.withInternetDateTime]
-            if let date = plain.date(from: string) { return date }
-            throw DecodingError.dataCorruptedError(
-                in: container,
-                debugDescription: "Unrecognized date format: \(string)"
-            )
-        }
-        return decoder
-    }()
+    // Decoding DTO: dueDate is decoded as a string and parsed separately so a
+    // quirky date format can never fail the whole analysis (losing category/items).
+    private struct AnalysisDTO: Decodable {
+        let category: ThoughtAnalysis.Category
+        let isTask: Bool
+        let cleanedText: String
+        let dueDate: String?
+        let priority: Int?
+        let tags: [String]
+        let listTitle: String?
+        let items: [String]?
+        let topic: String?
+        let isCompletion: Bool?
+        let completedItems: [String]?
+    }
+
+    private static func parseDate(_ string: String?) -> Date? {
+        guard let string = string, !string.isEmpty else { return nil }
+        let withFraction = ISO8601DateFormatter()
+        withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = withFraction.date(from: string) { return d }
+        let plain = ISO8601DateFormatter()
+        plain.formatOptions = [.withInternetDateTime]
+        if let d = plain.date(from: string) { return d }
+        let dateOnly = DateFormatter()
+        dateOnly.locale = Locale(identifier: "en_US_POSIX")
+        dateOnly.dateFormat = "yyyy-MM-dd"
+        return dateOnly.date(from: string)
+    }
 
     // MARK: - Capture-time analysis (single source of truth)
 
@@ -91,6 +101,13 @@ class AIManager: ObservableObject {
         Title Case, e.g. "Home", "Travel", "Contacts", "Product", "Writing", "Car").
         Reuse consistent topic names across related notes. Omit topic for tasks.
 
+        If the note states that something was ALREADY done or obtained — past tense,
+        e.g. "I already got milk and bread", "picked up the dry cleaning", "finished
+        the report", "done with X" — set isCompletion=true and list the specific
+        things completed in completedItems (e.g. ["milk", "bread"]). These are checked
+        off the user's existing lists/tasks instead of being saved as a new note. For
+        normal forward-looking notes set isCompletion=false and omit completedItems.
+
         Examples:
         "I need to call mom about dinner tomorrow at 6" → category task, isTask true, a dueDate
         "what if we used AI for onboarding" → category idea, isTask false, no dueDate
@@ -109,7 +126,9 @@ class AIManager: ObservableObject {
                 "tags": ["type": "array", "items": ["type": "string"]],
                 "listTitle": ["type": "string"],
                 "items": ["type": "array", "items": ["type": "string"]],
-                "topic": ["type": "string"]
+                "topic": ["type": "string"],
+                "isCompletion": ["type": "boolean"],
+                "completedItems": ["type": "array", "items": ["type": "string"]]
             ],
             "required": ["category", "isTask", "cleanedText", "tags"],
             "additionalProperties": false
@@ -123,10 +142,15 @@ class AIManager: ObservableObject {
         )
 
         guard let data = response.data(using: .utf8),
-              let analysis = try? Self.analysisDecoder.decode(ThoughtAnalysis.self, from: data) else {
+              let dto = try? JSONDecoder().decode(AnalysisDTO.self, from: data) else {
             return nil
         }
-        return analysis
+        return ThoughtAnalysis(
+            category: dto.category, isTask: dto.isTask, cleanedText: dto.cleanedText,
+            dueDate: Self.parseDate(dto.dueDate), priority: dto.priority, tags: dto.tags,
+            listTitle: dto.listTitle, items: dto.items, topic: dto.topic,
+            isCompletion: dto.isCompletion ?? false, completedItems: dto.completedItems
+        )
     }
 
     private func extractKeywords(_ text: String) -> [String] {

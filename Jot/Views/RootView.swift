@@ -21,14 +21,17 @@ struct RootView: View {
 
     // MARK: Derived data
 
+    // Plain to-do tasks: captures the AI flagged as actionable (taskState set).
     private var taskMessages: [ChatMessage] {
-        dataManager.messages.filter {
-            $0.messageType == .userThought && $0.category == "task" && $0.items == nil
-        }
+        dataManager.messages.filter { $0.messageType == .userThought && $0.taskState != nil }
+    }
+    // List captures filed under task (e.g. a grocery list) — rendered as checklists.
+    private var taskListThoughts: [CapturedThought] {
+        dataManager.thoughts.filter { $0.category == "task" && ($0.items?.isEmpty == false) }
     }
     private var counts: [JotCategory: Int] {
         [
-            .task: taskMessages.count,
+            .task: taskMessages.count + taskListThoughts.count,
             .idea: dataManager.thoughts.filter { $0.category == "idea" }.count,
             .info: dataManager.thoughts.filter { $0.category == "info" }.count,
         ]
@@ -86,7 +89,7 @@ struct RootView: View {
     private var chatBody: some View {
         switch filter {
         case .task:
-            TasksFilterView(tasks: taskMessages, dataManager: dataManager)
+            TasksFilterView(tasks: taskMessages, lists: taskListThoughts, dataManager: dataManager)
         case .idea:
             GroupedFilterView(category: .idea,
                               items: dataManager.thoughts.filter { $0.category == "idea" },
@@ -128,12 +131,21 @@ struct RootView: View {
         Task {
             let analysis = await aiManager.analyzeThought(text)
             await MainActor.run {
-                if let analysis = analysis {
-                    dataManager.applyAnalysis(analysis, toMessageId: messageId, thoughtId: thoughtId)
-                    dataManager.addSavedNote(category: analysis.category.rawValue)
-                } else {
+                guard let analysis = analysis else {
                     let isTask = dataManager.messages.first(where: { $0.id == messageId })?.taskState != nil
                     dataManager.addSavedNote(category: isTask ? "task" : "info")
+                    return
+                }
+                if analysis.isCompletion, let done = analysis.completedItems, !done.isEmpty {
+                    // Don't save the statement — check matching items off existing lists/tasks.
+                    if let thoughtId = thoughtId { dataManager.removeThought(thoughtId) }
+                    let checked = dataManager.completeItems(matching: done)
+                    dataManager.addAIResponse(checked.isEmpty
+                        ? "Got it — nothing matching found on your lists."
+                        : "✓ Checked off: " + checked.joined(separator: ", "))
+                } else {
+                    dataManager.applyAnalysis(analysis, toMessageId: messageId, thoughtId: thoughtId)
+                    dataManager.addSavedNote(category: analysis.category.rawValue)
                 }
             }
         }
