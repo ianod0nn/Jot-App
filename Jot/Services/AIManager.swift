@@ -7,6 +7,13 @@
 import Foundation
 import Combine
 
+enum QueryType {
+    case informationRetrieval  // "What's my Mariano's number?"
+    case taskQuery             // "What do I need to do?"
+    case shoppingQuery         // "What do I need at the store?"
+    case generalQuery          // Everything else
+}
+
 func getAPIKey() -> String {
     guard let path = Bundle.main.path(forResource: "Config", ofType: "plist"),
           let config = NSDictionary(contentsOfFile: path),
@@ -80,6 +87,10 @@ class AIManager: ObservableObject {
         list set isTask=false (the items are checked off individually). Omit items
         and listTitle entirely for single thoughts.
 
+        For idea and info notes, assign a short topic grouping label (1–2 words,
+        Title Case, e.g. "Home", "Travel", "Contacts", "Product", "Writing", "Car").
+        Reuse consistent topic names across related notes. Omit topic for tasks.
+
         Examples:
         "I need to call mom about dinner tomorrow at 6" → category task, isTask true, a dueDate
         "what if we used AI for onboarding" → category idea, isTask false, no dueDate
@@ -97,7 +108,8 @@ class AIManager: ObservableObject {
                 "priority": ["type": "integer", "enum": [1, 2, 3]],
                 "tags": ["type": "array", "items": ["type": "string"]],
                 "listTitle": ["type": "string"],
-                "items": ["type": "array", "items": ["type": "string"]]
+                "items": ["type": "array", "items": ["type": "string"]],
+                "topic": ["type": "string"]
             ],
             "required": ["category", "isTask", "cleanedText", "tags"],
             "additionalProperties": false

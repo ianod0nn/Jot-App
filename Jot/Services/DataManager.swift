@@ -93,8 +93,23 @@ class DataManager: ObservableObject {
             thoughts[index].category = analysis.category.rawValue
             thoughts[index].dueDate = analysis.dueDate
             thoughts[index].items = listItems
+            thoughts[index].topic = analysis.topic
         }
 
+        saveData()
+    }
+
+    /// Adds the "Saved to · Task/Idea/Reference" confirmation note after a capture.
+    func addSavedNote(category: String) {
+        var note = ChatMessage(
+            text: "",
+            timestamp: Date(),
+            isFromUser: true,
+            messageType: .savedNote,
+            taskState: nil
+        )
+        note.category = category
+        messages.append(note)
         saveData()
     }
 
@@ -296,7 +311,7 @@ class DataManager: ObservableObject {
         let permanentKeywords = [
             "code", "password", "number", "account", "login",
             "confirmation", "reference", "id", "license",
-            "mariano's", "loyalty", "member", "phone",
+             "loyalty", "member", "phone",
             "address", "email", "serial", "pin"
         ]
         

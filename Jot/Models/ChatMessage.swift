@@ -24,6 +24,7 @@ struct ChatMessage: Identifiable, Codable {
         case userThought = "thought"
         case userQuery = "query"
         case aiResponse = "response"
+        case savedNote = "saved_note" // "Saved to · Task" confirmation
     }
     
     enum TaskState: String, Codable {

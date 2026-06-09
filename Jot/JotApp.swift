@@ -11,7 +11,7 @@ import SwiftUI
 struct JotApp: App {
     var body: some Scene {
         WindowGroup {
-            ChatView()
+            RootView()
         }
     }
 }

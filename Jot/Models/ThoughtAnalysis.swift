@@ -23,4 +23,5 @@ struct ThoughtAnalysis: Codable {
     let tags: [String]
     let listTitle: String?    // short title when the note is a checklist
     let items: [String]?      // checklist items when the note enumerates several things
+    let topic: String?        // short grouping label for ideas/reference (e.g. "Home", "Travel")
 }
