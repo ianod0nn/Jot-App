@@ -47,6 +47,14 @@ struct ChatView: View {
                             }
                         }
                     }
+                    .onAppear {
+                        // Open at the most recent message, not the oldest.
+                        if let lastMessage = dataManager.messages.last {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                            }
+                        }
+                    }
                 }
                 
                 // Input Area
