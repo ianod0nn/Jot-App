@@ -137,10 +137,10 @@ class AIManager: ObservableObject {
             }
 
         case .taskQuery:
-            return getActiveTasks(thoughts)
+            return thoughts // handled directly via addTaskListResponse
 
         case .shoppingQuery:
-            return thoughts // handled directly in queryThoughts via list items
+            return thoughts // handled directly via addShoppingListResponse
 
         case .generalQuery:
             return thoughts
@@ -192,103 +192,9 @@ class AIManager: ObservableObject {
         }
     }
 
-    private func getActiveTasks(_ thoughts: [CapturedThought]) -> [CapturedThought] {
-        var activeTasks: [CapturedThought] = []
-
-        // Get all task-related thoughts
-        let taskThoughts = thoughts.filter { thought in
-            thought.category == "task" || thought.text.lowercased().contains("need to") ||
-            thought.text.lowercased().contains("remind me") || thought.text.lowercased().contains("book") ||
-            thought.text.lowercased().contains("call") || thought.text.lowercased().contains("message")
-        }
-
-        // Check each task to see if it was completed later
-        for task in taskThoughts {
-            let isCompleted = isTaskCompleted(task, allThoughts: thoughts)
-            if !isCompleted {
-                activeTasks.append(task)
-            }
-        }
-
-        return activeTasks
-    }
-
-    private func isTaskCompleted(_ task: CapturedThought, allThoughts: [CapturedThought]) -> Bool {
-        let taskText = task.text.lowercased()
-
-        // Get all thoughts after this task
-        let laterThoughts = allThoughts.filter { $0.timestamp > task.timestamp }
-
-        // Check if any later thought indicates completion
-        return laterThoughts.contains { laterThought in
-            let laterText = laterThought.text.lowercased()
-
-            // Check for completion of specific tasks
-            if taskText.contains("paris hotel") || taskText.contains("book") && taskText.contains("hotel") {
-                return laterText.contains("booked") && (laterText.contains("paris") || laterText.contains("hotel"))
-            }
-
-            if taskText.contains("johnny") || taskText.contains("message") && taskText.contains("johnny") {
-                return laterText.contains("sent") || laterText.contains("messaged") && laterText.contains("johnny")
-            }
-
-            if taskText.contains("car") && taskText.contains("serviced") {
-                return laterText.contains("took car") || laterText.contains("car serviced") || laterText.contains("got car serviced")
-            }
-
-            // Generic completion patterns
-            let completionKeywords = [
-                "already ", "done ", "completed ", "finished ", "did ", "sent ",
-                "called ", "booked ", "scheduled ", "messaged ", "texted "
-            ]
-
-            // Extract key terms from the original task
-            let taskKeywords = extractTaskKeywords(taskText)
-
-            return completionKeywords.contains { completionWord in
-                taskKeywords.contains { keyword in
-                    laterText.contains(completionWord + keyword) ||
-                    laterText.contains(completionWord) && laterText.contains(keyword)
-                }
-            }
-        }
-    }
-
-    private func extractTaskKeywords(_ text: String) -> [String] {
-        let importantWords = text.components(separatedBy: .whitespacesAndNewlines.union(.punctuationCharacters))
-            .filter { word in
-                word.count > 2 &&
-                !["the", "and", "for", "with", "need", "remind", "get", "take"].contains(word.lowercased())
-            }
-        return importantWords
-    }
-
-    func queryThoughts(_ query: String, thoughts: [CapturedThought], queryType: QueryType, pendingTasks: [ChatMessage] = []) async -> String {
-        if queryType == .taskQuery {
-            // Use the passed-in pending tasks instead of trying to access dataManager
-            if pendingTasks.isEmpty {
-                return "All caught up! No pending tasks found. 🎉"
-            }
-
-            let taskList = pendingTasks
-                .sorted { $0.timestamp < $1.timestamp }
-                .enumerated()
-                .map { index, task in
-                    "\(index + 1). \(task.text)"
-                }
-                .joined(separator: "\n")
-
-            return """
-            Here are your pending tasks:
-
-            \(taskList)
-
-            Tap the checkmark next to any task to mark it complete!
-            """
-        }
-
-        // Shopping queries are handled by DataManager.addShoppingListResponse,
-        // which renders an interactive checklist instead of text.
+    func queryThoughts(_ query: String, thoughts: [CapturedThought], queryType: QueryType) async -> String {
+        // Shopping and task queries are handled by DataManager as interactive
+        // checklists (addShoppingListResponse / addTaskListResponse), not text.
 
         // Handle other query types as before...
         let relevantThoughts = filterThoughtsForQuery(thoughts, queryType: queryType)

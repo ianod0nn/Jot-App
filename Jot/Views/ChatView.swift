@@ -181,7 +181,9 @@ struct ChatView: View {
         
         // Task/todo queries
         if lowercased.contains("need to do") || lowercased.contains("should i") ||
-           lowercased.contains("remind me") || lowercased.contains("tasks") {
+           lowercased.contains("remind me") || lowercased.contains("task") ||
+           lowercased.contains("to do") || lowercased.contains("to-do") ||
+           lowercased.contains("todo") {
             return .taskQuery
         }
         
@@ -203,14 +205,10 @@ struct ChatView: View {
             await MainActor.run {
                 if let analysis = analysis {
                     dataManager.applyAnalysis(analysis, toMessageId: messageId, thoughtId: thoughtId)
-                    // Tasks get inline controls in the bubble; acknowledge non-tasks.
-                    if !analysis.isTask {
-                        dataManager.addAIResponse("✓ Saved")
-                    }
-                } else {
-                    // AI unavailable — the optimistic keyword guess stands. Acknowledge.
-                    dataManager.addAIResponse("✓ Saved")
                 }
+                // Captures are acknowledged uniformly; tasks/lists are surfaced
+                // later when the user asks for them.
+                dataManager.addAIResponse("✓ Saved")
             }
         }
     }
@@ -218,23 +216,23 @@ struct ChatView: View {
     private func handleQuery(_ text: String) {
         let queryType = classifyQuery(text)
 
-        // Shopping/list queries render an interactive checklist, not text.
+        // Shopping and task queries render an interactive checklist, not text.
         if queryType == .shoppingQuery {
             dataManager.addShoppingListResponse()
             return
         }
+        if queryType == .taskQuery {
+            dataManager.addTaskListResponse()
+            return
+        }
 
         Task {
-            // Pass pending tasks to AIManager for task queries
-            let pendingTasks = queryType == .taskQuery ? dataManager.getPendingTasks() : []
-            
             let response = await aiManager.queryThoughts(
                 text,
                 thoughts: dataManager.thoughts,
-                queryType: queryType,
-                pendingTasks: pendingTasks
+                queryType: queryType
             )
-            
+
             DispatchQueue.main.async {
                 dataManager.addAIResponse(response)
             }

@@ -120,6 +120,33 @@ class DataManager: ObservableObject {
         )
         message.listTitle = "Shopping list"
         message.items = openItems
+        message.listKind = .shopping
+        messages.append(message)
+        saveData()
+    }
+
+    /// Builds the answer to a task/to-do query as a checkable card listing every
+    /// open (pending) task. Each row maps back to its source task message by id.
+    func addTaskListResponse() {
+        let pending = messages
+            .filter { $0.taskState == .pending && $0.items == nil }
+            .sorted { $0.timestamp < $1.timestamp }
+
+        if pending.isEmpty {
+            addAIResponse("All caught up! No open tasks. 🎉")
+            return
+        }
+
+        var message = ChatMessage(
+            text: "",
+            timestamp: Date(),
+            isFromUser: false,
+            messageType: .aiResponse,
+            taskState: nil
+        )
+        message.listTitle = "Open tasks"
+        message.items = pending.map { ListItem(id: $0.id, text: $0.text, isChecked: false) }
+        message.listKind = .tasks
         messages.append(message)
         saveData()
     }
@@ -133,11 +160,25 @@ class DataManager: ObservableObject {
               var items = messages[mIdx].items,
               let iIdx = items.firstIndex(where: { $0.id == itemId }) else { return }
 
-        items[iIdx].isChecked.toggle()
+        let newValue = !items[iIdx].isChecked
+        items[iIdx].isChecked = newValue
         messages[mIdx].items = items
+        let kind = messages[mIdx].listKind
 
-        // Persist to the source thought that owns this item.
-        let newValue = items[iIdx].isChecked
+        if kind == .tasks {
+            // itemId is the source task message id — mark it complete/reopened.
+            if newValue { markTaskComplete(itemId) } else { markAsTask(itemId) }
+
+            if items.allSatisfy({ $0.isChecked }) {
+                messages.removeAll { $0.id == messageId }
+                addAIResponse("✓ All done!") // persists via saveData
+                return
+            }
+            saveData()
+            return
+        }
+
+        // Shopping list: persist to the source thought that owns this item.
         for tIdx in thoughts.indices {
             if var titems = thoughts[tIdx].items,
                let j = titems.firstIndex(where: { $0.id == itemId }) {

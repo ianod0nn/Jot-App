@@ -18,6 +18,7 @@ struct ChatMessage: Identifiable, Codable {
     var dueDate: Date? = nil       // AI-extracted due date, if any
     var listTitle: String? = nil   // title when this message is a checklist
     var items: [ListItem]? = nil   // checkable rows when this message is a list
+    var listKind: ListKind? = nil  // how checking an item is persisted
     
     enum MessageType: String, Codable {
         case userThought = "thought"
@@ -29,6 +30,11 @@ struct ChatMessage: Identifiable, Codable {
         case pending = "pending"
         case completed = "completed"
         case notATask = "not_a_task" // User said this isn't a task
+    }
+
+    enum ListKind: String, Codable {
+        case shopping  // items map to captured-thought list items
+        case tasks     // items map to pending task messages (by id)
     }
     
     var displayText: String {

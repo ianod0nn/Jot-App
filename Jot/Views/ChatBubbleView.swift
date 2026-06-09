@@ -37,12 +37,7 @@ struct ChatBubbleView: View {
                     Spacer(minLength: 50)
                 }
             }
-            
-            // Task controls for user messages
-            if message.isFromUser && shouldShowTaskControls(for: message) {
-                taskControlButtons
-            }
-            
+
             // Timestamp and status
             HStack {
                 if !message.isFromUser { Spacer() }
@@ -92,49 +87,6 @@ struct ChatBubbleView: View {
             return Text(attributed)
         }
         return Text(message.text)
-    }
-    
-    @ViewBuilder
-    private var taskControlButtons: some View {
-        HStack(spacing: 12) {
-            if message.taskState == .pending {
-                // Task is pending - show completion options
-                Button(action: { dataManager.markTaskComplete(message.id) }) {
-                    Label("Done", systemImage: "checkmark.circle.fill")
-                        .font(.caption)
-                        .foregroundColor(.green)
-                }
-                
-                Button(action: { dataManager.markAsNotATask(message.id) }) {
-                    Label("Not a Task", systemImage: "xmark.circle")
-                        .font(.caption)
-                        .foregroundColor(.orange)
-                }
-                
-            } else if message.taskState == .notATask {
-                // Marked as not a task - show option to make it a task
-                Button(action: { dataManager.markAsTask(message.id) }) {
-                    Label("Make Task", systemImage: "plus.circle")
-                        .font(.caption)
-                        .foregroundColor(.blue)
-                }
-                
-            } else if message.taskState == .completed {
-                // Task completed - show option to undo
-                Button(action: { dataManager.markAsTask(message.id) }) {
-                    Label("Undo", systemImage: "arrow.uturn.backward.circle")
-                        .font(.caption)
-                        .foregroundColor(.gray)
-                }
-            }
-        }
-        .padding(.trailing, message.isFromUser ? 16 : 0)
-        .padding(.leading, message.isFromUser ? 0 : 16)
-    }
-    
-    private func shouldShowTaskControls(for message: ChatMessage) -> Bool {
-        // Show controls if it has a task state or if it looks like it could be a task
-        return message.taskState != nil || message.messageType == .userThought
     }
     
     @ViewBuilder
